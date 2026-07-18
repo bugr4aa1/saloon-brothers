@@ -82,12 +82,24 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Branch selection state (1 = 1. Şube, 2 = 2. Şube)
+  const [selectedBranch, setSelectedBranch] = useState(1);
+
   // Authentication States
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(
-    localStorage.getItem('isAdminAuthenticated') === 'true'
-  );
+  const [loggedInUser, setLoggedInUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('loggedInUser');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [adminUsernameInput, setAdminUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
+
+  const isAdminAuthenticated = !!loggedInUser;
+
 
   // Toast Notifications State
   const [toasts, setToasts] = useState([]);
@@ -298,35 +310,42 @@ function App() {
   }
 
   // Handle Admin Authentication
-  const handleAdminLogin = (e) => {
+  const handleAdminLogin = async (e) => {
     e.preventDefault();
-    if (passwordInput === 'admin') {
-      setIsAdminAuthenticated(true);
-      localStorage.setItem('isAdminAuthenticated', 'true');
-      setLoginError('');
-      setPasswordInput('');
-      showAlert('Giriş Başarılı', 'Yönetim paneline başarıyla giriş yaptınız.', 'success');
-      
-      // Force unlock browser Audio Context to allow loud alarms
-      try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (AudioContext) {
-          const tempCtx = new AudioContext();
-          if (tempCtx.state === 'suspended') {
-            tempCtx.resume();
+    setLoading(true);
+    setLoginError('');
+    try {
+      const result = await Api.login(adminUsernameInput, passwordInput);
+      if (result.success) {
+        setLoggedInUser(result.user);
+        localStorage.setItem('loggedInUser', JSON.stringify(result.user));
+        setAdminUsernameInput('');
+        setPasswordInput('');
+        showAlert('Giriş Başarılı', `Hoş geldiniz, ${result.user.name}`, 'success');
+
+        // Force unlock browser Audio Context to allow loud alarms
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            const tempCtx = new AudioContext();
+            if (tempCtx.state === 'suspended') {
+              tempCtx.resume();
+            }
           }
+        } catch (err) {
+          console.log('Audio unlock failed:', err);
         }
-      } catch (err) {
-        console.log('Audio unlock failed:', err);
       }
-    } else {
-      setLoginError('Hatalı şifre girdiniz. Tekrar deneyin.');
+    } catch (err) {
+      setLoginError(err.message || 'Kullanıcı adı veya şifre hatalı.');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleAdminLogout = () => {
-    setIsAdminAuthenticated(false);
-    localStorage.removeItem('isAdminAuthenticated');
+    setLoggedInUser(null);
+    localStorage.removeItem('loggedInUser');
     setActiveTab('home');
     showAlert('Çıkış Yapıldı', 'Oturumunuz sonlandırıldı.', 'info');
   };
@@ -454,16 +473,21 @@ function App() {
   const totalPrice = selectedServices.reduce((sum, s) => sum + s.price, 0);
 
   // Financial dashboard calculations
-  const totalRevenue = appointments
+  const totalRevenue = (loggedInUser?.role === 'barber'
+    ? appointments.filter(app => app.barberId === loggedInUser.barberId)
+    : appointments)
     .filter(app => app.status === 'Tamamlandı')
     .reduce((sum, app) => sum + app.totalPrice, 0);
 
-  const totalVeresiye = appointments
+  const totalVeresiye = (loggedInUser?.role === 'barber'
+    ? appointments.filter(app => app.barberId === loggedInUser.barberId)
+    : appointments)
     .filter(app => app.status === 'Veresiye')
     .reduce((sum, app) => sum + app.totalPrice, 0);
 
-  const totalExpense = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+  const totalExpense = loggedInUser?.role === 'barber' ? 0 : expenses.reduce((sum, exp) => sum + exp.amount, 0);
   const netProfit = totalRevenue - totalExpense; // Cash on hand profit (Revenue - Expenses)
+
 
   // Get next 7 working days (excluding Sundays) for booking
   const getNextSevenDays = () => {
@@ -541,8 +565,13 @@ function App() {
     setActiveTab('home');
   };
 
-  // Filter appointments for admin view
-  const filteredAppointments = appointments.filter(app => {
+  // Filter appointments according to user access role
+  const userAppointments = loggedInUser?.role === 'barber'
+    ? appointments.filter(app => app.barberId === loggedInUser.barberId)
+    : appointments;
+
+  // Filter appointments for admin view table
+  const filteredAppointments = userAppointments.filter(app => {
     if (adminFilter === 'Tümü') return true;
     return app.status === adminFilter;
   });
@@ -732,10 +761,28 @@ function App() {
                     <h2 className="font-serif" style={{ fontSize: '2.5rem' }}>Tasarım Ekibimiz</h2>
                     <p style={{ color: 'var(--text-secondary)' }}>Kendinizi emin ellere teslim edin</p>
                   </div>
-                  <button className="btn btn-secondary" onClick={() => { setActiveTab('book'); setBookingStep(1); }}>Tümünü Gör</button>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.05)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <button 
+                        className="btn" 
+                        style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', background: selectedBranch === 1 ? 'var(--gold-primary)' : 'transparent', color: selectedBranch === 1 ? 'var(--bg-obsidian)' : 'var(--text-secondary)', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                        onClick={() => setSelectedBranch(1)}
+                      >
+                        1. Şube (Merkez)
+                      </button>
+                      <button 
+                        className="btn" 
+                        style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', background: selectedBranch === 2 ? 'var(--gold-primary)' : 'transparent', color: selectedBranch === 2 ? 'var(--bg-obsidian)' : 'var(--text-secondary)', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                        onClick={() => setSelectedBranch(2)}
+                      >
+                        2. Şube (Yeni)
+                      </button>
+                    </div>
+                    <button className="btn btn-secondary" onClick={() => { setActiveTab('book'); setBookingStep(1); }}>Tümünü Gör</button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3">
-                  {barbers.map(barber => (
+                  {barbers.filter(b => b.branch === selectedBranch).map(barber => (
                     <div key={barber.id} className="card" onClick={() => { setSelectedBarber(barber); setActiveTab('book'); setBookingStep(2); }}>
                       <div className="card-body" style={{ padding: '2rem' }}>
                         {barber.experience && (
@@ -827,8 +874,26 @@ function App() {
               {/* STEP 1: Barber Selection */}
               {bookingStep === 1 && (
                 <div className="animate-fade-in">
+                  {/* Branch Selector */}
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.05)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)', maxWidth: '320px', margin: '0 auto 2rem' }}>
+                    <button 
+                      className="btn" 
+                      style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', width: '50%', background: selectedBranch === 1 ? 'var(--gold-primary)' : 'transparent', color: selectedBranch === 1 ? 'var(--bg-obsidian)' : 'var(--text-secondary)', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                      onClick={() => { setSelectedBranch(1); setSelectedBarber(null); }}
+                    >
+                      1. Şube
+                    </button>
+                    <button 
+                      className="btn" 
+                      style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', width: '50%', background: selectedBranch === 2 ? 'var(--gold-primary)' : 'transparent', color: selectedBranch === 2 ? 'var(--bg-obsidian)' : 'var(--text-secondary)', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                      onClick={() => { setSelectedBranch(2); setSelectedBarber(null); }}
+                    >
+                      2. Şube
+                    </button>
+                  </div>
+
                   <div className="grid grid-cols-3">
-                    {barbers.map(barber => (
+                    {barbers.filter(b => b.branch === selectedBranch).map(barber => (
                       <div 
                         key={barber.id} 
                         className={`card ${selectedBarber?.id === barber.id ? 'selected' : ''}`}
@@ -1153,8 +1218,8 @@ function App() {
                     <Lock size={48} style={{ margin: '0 auto' }} />
                   </div>
                   <h2 className="font-serif" style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Yönetici Girişi</h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '2rem' }}>
-                    Yönetim paneline erişmek için lütfen şifrenizi girin.
+                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '2rem' }}>
+                    Yönetim paneline erişmek için kullanıcı adı ve şifrenizi girin.
                   </p>
                   
                   {loginError && (
@@ -1164,7 +1229,20 @@ function App() {
                     </div>
                   )}
 
-                  <div className="form-group" style={{ textAlign: 'left' }}>
+                  <div className="form-group" style={{ textAlign: 'left', marginBottom: '1.25rem' }}>
+                    <label htmlFor="admin-user">Kullanıcı Adı</label>
+                    <input 
+                      id="admin-user"
+                      type="text"
+                      className="form-control"
+                      placeholder="Kullanıcı adı"
+                      required
+                      value={adminUsernameInput}
+                      onChange={(e) => setAdminUsernameInput(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
                     <label htmlFor="admin-pass">Şifre</label>
                     <input 
                       id="admin-pass"
@@ -1177,11 +1255,11 @@ function App() {
                     />
                   </div>
 
-                  <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
                     Giriş Yap
                   </button>
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '1.5rem' }}>
-                    Varsayılan Şifre: <strong style={{ color: 'var(--text-secondary)' }}>admin</strong>
+                    Yetkili kullanıcı adı ve şifresiyle oturum açın.
                   </p>
                 </form>
               </div>
@@ -1193,8 +1271,12 @@ function App() {
                   {/* Top Bar Dashboard */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                     <div>
-                      <h2 className="font-serif" style={{ fontSize: '2.5rem' }}>Yönetim Paneli</h2>
-                      <p style={{ color: 'var(--text-secondary)' }}>Saloon Brothers dükkan yönetimi, mali göstergeler ve randevular.</p>
+                      <h2 className="font-serif" style={{ fontSize: '2.5rem' }}>Yönetim Paneli {loggedInUser?.role === 'barber' ? `- ${loggedInUser.name}` : ''}</h2>
+                      <p style={{ color: 'var(--text-secondary)' }}>
+                        {loggedInUser?.role === 'barber' 
+                          ? 'Kişisel randevularınız ve ciro takibiniz.' 
+                          : 'Saloon Brothers dükkan yönetimi, mali göstergeler ve randevular.'}
+                      </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
                       <button className="btn btn-secondary" onClick={playNotificationSound}>
@@ -1213,9 +1295,13 @@ function App() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
                     <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderColor: 'rgba(16, 185, 129, 0.2)' }}>
                       <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kasa (Nakit / Kart)</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          {loggedInUser?.role === 'barber' ? 'Kişisel Ciro (Gelir)' : 'Kasa (Nakit / Kart)'}
+                        </span>
                         <h2 style={{ fontSize: '2rem', marginTop: '0.25rem', color: 'var(--success)' }}>{totalRevenue} TL</h2>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Tahsil edilen nakit gelir</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          {loggedInUser?.role === 'barber' ? 'Tamamladığınız randevular' : 'Tahsil edilen nakit gelir'}
+                        </span>
                       </div>
                       <div style={{ color: 'var(--success)', background: 'rgba(16, 185, 129, 0.1)', padding: '0.75rem', borderRadius: '12px' }}>
                         <TrendingUp size={24} />
@@ -1224,36 +1310,44 @@ function App() {
 
                     <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderColor: 'rgba(139, 92, 246, 0.2)' }}>
                       <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Veresiye Alacaklar</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          {loggedInUser?.role === 'barber' ? 'Kişisel Veresiye (Alacak)' : 'Veresiye Alacaklar'}
+                        </span>
                         <h2 style={{ fontSize: '2rem', marginTop: '0.25rem', color: '#a78bfa' }}>{totalVeresiye} TL</h2>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Deftere yazılan borçlar</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          {loggedInUser?.role === 'barber' ? 'Deftere yazılan borçlarınız' : 'Deftere yazılan borçlar'}
+                        </span>
                       </div>
                       <div style={{ color: '#a78bfa', background: 'rgba(139, 92, 246, 0.1)', padding: '0.75rem', borderRadius: '12px' }}>
                         <Bell size={24} />
                       </div>
                     </div>
 
-                    <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
-                      <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Toplam Gider</span>
-                        <h2 style={{ fontSize: '2rem', marginTop: '0.25rem', color: 'var(--danger)' }}>{totalExpense} TL</h2>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Tüm dükkan harcamaları</span>
-                      </div>
-                      <div style={{ color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem', borderRadius: '12px' }}>
-                        <TrendingDown size={24} />
-                      </div>
-                    </div>
+                    {loggedInUser?.role !== 'barber' && (
+                      <>
+                        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
+                          <div>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Toplam Gider</span>
+                            <h2 style={{ fontSize: '2rem', marginTop: '0.25rem', color: 'var(--danger)' }}>{totalExpense} TL</h2>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Tüm dükkan harcamaları</span>
+                          </div>
+                          <div style={{ color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem', borderRadius: '12px' }}>
+                            <TrendingDown size={24} />
+                          </div>
+                        </div>
 
-                    <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderColor: netProfit >= 0 ? 'rgba(255, 255, 255, 0.2)' : 'rgba(239, 68, 68, 0.2)' }}>
-                      <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Nakit Kar</span>
-                        <h2 style={{ fontSize: '2rem', marginTop: '0.25rem', color: netProfit >= 0 ? 'var(--text-primary)' : 'var(--danger)' }}>{netProfit} TL</h2>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Eldeki Nakit - Giderler</span>
-                      </div>
-                      <div style={{ color: netProfit >= 0 ? 'var(--text-primary)' : 'var(--danger)', background: netProfit >= 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(239, 68, 68, 0.1)', padding: '0.75rem', borderRadius: '12px' }}>
-                        <DollarSign size={24} />
-                      </div>
-                    </div>
+                        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderColor: netProfit >= 0 ? 'rgba(255, 255, 255, 0.2)' : 'rgba(239, 68, 68, 0.2)' }}>
+                          <div>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Nakit Kar</span>
+                            <h2 style={{ fontSize: '2rem', marginTop: '0.25rem', color: netProfit >= 0 ? 'var(--text-primary)' : 'var(--danger)' }}>{netProfit} TL</h2>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Eldeki Nakit - Giderler</span>
+                          </div>
+                          <div style={{ color: netProfit >= 0 ? 'var(--text-primary)' : 'var(--danger)', background: netProfit >= 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(239, 68, 68, 0.1)', padding: '0.75rem', borderRadius: '12px' }}>
+                            <DollarSign size={24} />
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Sub-tab Navigation (Randevular vs. Finans & Giderler) */}
@@ -1273,21 +1367,23 @@ function App() {
                     >
                       Randevu Yönetimi
                     </button>
-                    <button 
-                      style={{ 
-                        padding: '1rem 2rem', 
-                        background: 'none', 
-                        border: 'none', 
-                        borderBottom: adminSubTab === 'finance' ? '2px solid var(--gold-primary)' : 'none',
-                        color: adminSubTab === 'finance' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        fontFamily: 'inherit'
-                      }}
-                      onClick={() => setAdminSubTab('finance')}
-                    >
-                      Gider Ekle & Finans
-                    </button>
+                    {loggedInUser?.role !== 'barber' && (
+                      <button 
+                        style={{ 
+                          padding: '1rem 2rem', 
+                          background: 'none', 
+                          border: 'none', 
+                          borderBottom: adminSubTab === 'finance' ? '2px solid var(--gold-primary)' : 'none',
+                          color: adminSubTab === 'finance' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit'
+                        }}
+                        onClick={() => setAdminSubTab('finance')}
+                      >
+                        Gider Ekle & Finans
+                      </button>
+                    )}
                   </div>
 
                   {/* SUBTAB 1: APPOINTMENTS MANAGEMENT */}
@@ -1299,37 +1395,37 @@ function App() {
                           className={`tab-filter-btn ${adminFilter === 'Beklemede' ? 'active' : ''}`}
                           onClick={() => setAdminFilter('Beklemede')}
                         >
-                          Bekleyen Talepler ({appointments.filter(a => a.status === 'Beklemede').length})
+                          Bekleyen Talepler ({userAppointments.filter(a => a.status === 'Beklemede').length})
                         </button>
                         <button 
                           className={`tab-filter-btn ${adminFilter === 'Onaylandı' ? 'active' : ''}`}
                           onClick={() => setAdminFilter('Onaylandı')}
                         >
-                          Onaylananlar ({appointments.filter(a => a.status === 'Onaylandı').length})
+                          Onaylananlar ({userAppointments.filter(a => a.status === 'Onaylandı').length})
                         </button>
                         <button 
                           className={`tab-filter-btn ${adminFilter === 'Tamamlandı' ? 'active' : ''}`}
                           onClick={() => setAdminFilter('Tamamlandı')}
                         >
-                          Tamamlananlar ({appointments.filter(a => a.status === 'Tamamlandı').length})
+                          Tamamlananlar ({userAppointments.filter(a => a.status === 'Tamamlandı').length})
                         </button>
                         <button 
                           className={`tab-filter-btn ${adminFilter === 'Veresiye' ? 'active' : ''}`}
                           onClick={() => setAdminFilter('Veresiye')}
                         >
-                          Veresiyeler ({appointments.filter(a => a.status === 'Veresiye').length})
+                          Veresiyeler ({userAppointments.filter(a => a.status === 'Veresiye').length})
                         </button>
                         <button 
                           className={`tab-filter-btn ${adminFilter === 'Tamamlanmadı' ? 'active' : ''}`}
                           onClick={() => setAdminFilter('Tamamlanmadı')}
                         >
-                          Gelmeyenler ({appointments.filter(a => a.status === 'Tamamlanmadı').length})
+                          Gelmeyenler ({userAppointments.filter(a => a.status === 'Tamamlanmadı').length})
                         </button>
                         <button 
                           className={`tab-filter-btn ${adminFilter === 'Tümü' ? 'active' : ''}`}
                           onClick={() => setAdminFilter('Tümü')}
                         >
-                          Tüm Randevular ({appointments.length})
+                          Tüm Randevular ({userAppointments.length})
                         </button>
                       </div>
 
