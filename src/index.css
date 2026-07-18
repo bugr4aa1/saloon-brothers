@@ -1,36 +1,36 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
 
 :root {
-  /* Color Palette - Premium Black & White */
-  --bg-obsidian: #050505;
-  --bg-card: #0d0d0f;
-  --bg-card-hover: #141417;
-  --bg-input: #101012;
-  --gold-primary: #ffffff;
-  --gold-hover: #f0f0f0;
-  --gold-dark: #a0a0a0;
-  --gold-glow: rgba(255, 255, 255, 0.15);
+  /* Color Palette - Premium White & Black */
+  --bg-obsidian: #ffffff;
+  --bg-card: #f9f9fb;
+  --bg-card-hover: #f1f1f5;
+  --bg-input: #ffffff;
+  --gold-primary: #000000;
+  --gold-hover: #1a1a1a;
+  --gold-dark: #4b5563;
+  --gold-glow: rgba(0, 0, 0, 0.05);
   
-  --text-primary: #ffffff;
-  --text-secondary: #adadb8;
-  --text-muted: #666673;
-  --border-color: #202025;
-  --border-hover: #353540;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --border-color: #e5e7eb;
+  --border-hover: #d1d5db;
 
-  
   --success: #10b981;
   --danger: #ef4444;
   --warning: #f59e0b;
 
   /* Glassmorphism */
-  --glass-bg: rgba(20, 20, 26, 0.65);
-  --glass-border: rgba(255, 255, 255, 0.05);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
 
   /* Transitions */
   --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 
 * {
   box-sizing: border-box;
@@ -111,7 +111,7 @@ h1, h2, h3, h4, h5, h6 {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(10, 10, 12, 0.85);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-color);
   padding: 1.25rem 0;
@@ -345,8 +345,8 @@ textarea.form-control {
   padding: 8rem 0;
   display: flex;
   align-items: center;
-  background: radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
-              radial-gradient(circle at 10% 80%, rgba(255, 255, 255, 0.02) 0%, transparent 50%);
+  background: radial-gradient(circle at 80% 20%, rgba(0, 0, 0, 0.02) 0%, transparent 50%),
+              radial-gradient(circle at 10% 80%, rgba(0, 0, 0, 0.01) 0%, transparent 50%);
 }
 
 .hero-content {
@@ -614,7 +614,7 @@ textarea.form-control {
 
 /* Receipt and Summary */
 .receipt-card {
-  background: linear-gradient(135deg, #181822 0%, #101016 100%);
+  background: linear-gradient(135deg, #f9f9fb 0%, #f1f1f5 100%);
   border: 1px dashed var(--border-color);
   padding: 2rem;
   border-radius: 12px;
@@ -725,13 +725,13 @@ textarea.form-control {
 }
 
 .toast {
-  background: rgba(13, 13, 15, 0.96);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   border: 1px solid var(--border-color);
   border-left: 4px solid var(--gold-primary);
   border-radius: 8px;
   padding: 1.1rem 1.4rem;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
@@ -843,44 +843,83 @@ textarea.form-control {
 @media (max-width: 768px) {
   .header-container {
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1rem;
     align-items: center;
   }
   .nav-links {
     width: 100%;
     justify-content: center;
-    gap: 1.5rem;
+    gap: 1rem;
+  }
+  .nav-links a {
+    font-size: 0.85rem;
+    padding: 0.25rem 0.5rem;
   }
   .logo {
-    font-size: 1.35rem;
+    font-size: 1.25rem;
+  }
+  .hero {
+    padding: 4rem 0 3rem;
+    text-align: center;
+  }
+  .hero-title {
+    font-size: 2.5rem;
+  }
+  .hero-desc {
+    font-size: 0.95rem;
+    margin-bottom: 1.75rem;
+  }
+  .hero-actions {
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+  .hero-actions .btn {
+    width: 100%;
+  }
+  .grid-cols-3 {
+    grid-template-columns: 1fr !important;
   }
 }
 
 @media (max-width: 580px) {
+  .container {
+    padding: 0 1rem;
+  }
+  .glass-panel {
+    padding: 1.25rem;
+    border-radius: 12px;
+  }
   .calendar-grid {
-    gap: 0.35rem;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 0.4rem;
   }
   .calendar-day {
-    padding: 0.4rem 0;
-    border-radius: 6px;
+    padding: 0.6rem 0;
+    border-radius: 8px;
   }
   .calendar-day span:first-child {
-    font-size: 0.65rem;
+    font-size: 0.6rem;
   }
   .calendar-day span:last-child {
-    font-size: 1rem;
+    font-size: 1.1rem;
   }
   .slots-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.4rem;
+  }
+  .slot-btn {
+    font-size: 0.8rem;
+    padding: 0.6rem 0.25rem;
   }
   .step-node {
-    width: 2.5rem;
-    height: 2.5rem;
-    font-size: 0.9rem;
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 0.8rem;
   }
   .steps-indicator {
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
+    gap: 0.5rem;
   }
   .toast-container {
     top: 10px;
@@ -891,7 +930,23 @@ textarea.form-control {
   .animate-fade-in[style*="grid-template-columns: 1.2fr 1fr"] {
     grid-template-columns: 1fr !important;
   }
+  .receipt-card {
+    padding: 1.25rem;
+  }
+  .tab-filters {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    padding-bottom: 0.5rem;
+  }
+  .tab-filters::-webkit-scrollbar {
+    display: none;
+  }
+  /* Finance Subtab layout */
+  .animate-fade-in[style*="grid-template-columns: 1fr 1.8fr"] {
+    grid-template-columns: 1fr !important;
+  }
 }
+
 
 /* Custom Modal Dialogs */
 .modal-overlay {
