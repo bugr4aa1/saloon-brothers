@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://saloon-brothers-api.onrender.com/api'; // Kendi Render linkini yaz
+const API_BASE_URL = 'https://saloon-brothers-backend.onrender.com/api'; // Kendi Render linkini yaz
 
 export async function fetchBarbers() {
   const response = await fetch(`${API_BASE_URL}/barbers`);
