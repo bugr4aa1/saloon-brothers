@@ -693,13 +693,12 @@ function App() {
                 <div className="grid grid-cols-3">
                   {barbers.map(barber => (
                     <div key={barber.id} className="card" onClick={() => { setSelectedBarber(barber); setActiveTab('book'); setBookingStep(2); }}>
-                      <div className="card-img-wrapper">
-                        <img src={barber.avatar} alt={barber.name} className="card-img" />
-                        <span className="card-badge">{barber.experience}</span>
-                      </div>
-                      <div className="card-body">
-                        <h3 style={{ fontSize: '1.25rem' }}>{barber.name}</h3>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>{barber.specialty}</p>
+                      <div className="card-body" style={{ padding: '2rem' }}>
+                        <span className="status-badge" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', display: 'inline-block', marginBottom: '0.75rem', fontSize: '0.75rem' }}>
+                          {barber.experience}
+                        </span>
+                        <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{barber.name}</h3>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>{barber.specialty}</p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>
                           <Star size={16} fill="var(--gold-primary)" />
                           <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{barber.rating}</span>
@@ -787,14 +786,13 @@ function App() {
                         className={`card ${selectedBarber?.id === barber.id ? 'selected' : ''}`}
                         onClick={() => setSelectedBarber(barber)}
                       >
-                        <div className="card-img-wrapper">
-                          <img src={barber.avatar} alt={barber.name} className="card-img" />
-                          <span className="card-badge">{barber.experience}</span>
-                        </div>
-                        <div className="card-body">
-                          <h3 style={{ fontSize: '1.25rem' }}>{barber.name}</h3>
-                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>{barber.specialty}</p>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--gold-primary)', fontSize: '0.85rem' }}>
+                        <div className="card-body" style={{ padding: '2rem' }}>
+                          <span className="status-badge" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', display: 'inline-block', marginBottom: '0.75rem', fontSize: '0.75rem' }}>
+                            {barber.experience}
+                          </span>
+                          <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{barber.name}</h3>
+                          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>{barber.specialty}</p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>
                             <Star size={14} fill="var(--gold-primary)" />
                             <span>{barber.rating} ({barber.reviewCount} Yorum)</span>
                           </div>
