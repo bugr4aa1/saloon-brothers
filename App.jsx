@@ -35,9 +35,9 @@ function playNotificationSound() {
     const ctx = new AudioContext();
     const now = ctx.currentTime;
     
-    // Play a repeating double-beep sequence every second for 15 seconds
-    const totalBeeps = 15;
-    const beepDuration = 0.25; 
+    // Play a repeating loud double-beep sawtooth sequence every second for 10 seconds
+    const totalBeeps = 10;
+    const beepDuration = 0.35; 
     
     for (let i = 0; i < totalBeeps; i++) {
       const secondStart = now + i;
@@ -47,22 +47,22 @@ function playNotificationSound() {
       const gain1 = ctx.createGain();
       osc1.connect(gain1);
       gain1.connect(ctx.destination);
-      osc1.type = 'triangle'; // triangle wave is louder and cleaner
-      osc1.frequency.setValueAtTime(880, secondStart); // A5 note
-      gain1.gain.setValueAtTime(0.25, secondStart); // Louder volume (0.25)
+      osc1.type = 'sawtooth'; // sawtooth waveform is much louder and buzzy like a real alarm
+      osc1.frequency.setValueAtTime(988, secondStart); // high piercing B5 pitch
+      gain1.gain.setValueAtTime(0.35, secondStart); // high volume
       gain1.gain.exponentialRampToValueAtTime(0.001, secondStart + beepDuration);
       osc1.start(secondStart);
       osc1.stop(secondStart + beepDuration);
 
-      // Beep 2 (quick succession for alarm effect)
-      const beep2Start = secondStart + 0.3;
+      // Beep 2 (quick succession for alarm warning)
+      const beep2Start = secondStart + 0.4;
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
       osc2.connect(gain2);
       gain2.connect(ctx.destination);
-      osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(880, beep2Start);
-      gain2.gain.setValueAtTime(0.25, beep2Start);
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(988, beep2Start);
+      gain2.gain.setValueAtTime(0.35, beep2Start);
       gain2.gain.exponentialRampToValueAtTime(0.001, beep2Start + beepDuration);
       osc2.start(beep2Start);
       osc2.stop(beep2Start + beepDuration);
@@ -71,6 +71,7 @@ function playNotificationSound() {
     console.log('Audio Context interaction block or error:', err);
   }
 }
+
 
 function App() {
   const [activeTab, setActiveTab] = useState('home'); // home, book, admin
@@ -160,8 +161,13 @@ function App() {
 
   // WebSocket Connection for Real-time Notifications
   useEffect(() => {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(`${wsProtocol}//localhost:5001`);
+    const wsBase = Api.API_BASE_URL.replace('/api', '');
+    const wsProtocol = wsBase.startsWith('https') ? 'wss:' : 'ws:';
+    const wsHost = wsBase.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProtocol}//${wsHost}`;
+
+    console.log('Connecting WebSocket to:', wsUrl);
+    const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
       console.log('WebSocket Connected to backend');
@@ -283,6 +289,19 @@ function App() {
       setLoginError('');
       setPasswordInput('');
       showAlert('Giriş Başarılı', 'Yönetim paneline başarıyla giriş yaptınız.', 'success');
+      
+      // Force unlock browser Audio Context to allow loud alarms
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const tempCtx = new AudioContext();
+          if (tempCtx.state === 'suspended') {
+            tempCtx.resume();
+          }
+        }
+      } catch (err) {
+        console.log('Audio unlock failed:', err);
+      }
     } else {
       setLoginError('Hatalı şifre girdiniz. Tekrar deneyin.');
     }
