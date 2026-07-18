@@ -115,6 +115,13 @@ function App() {
     onCancel: null
   });
 
+  // Payment and Veresiye custom modal states
+  const [paymentModal, setPaymentModal] = useState({ isOpen: false, appointmentId: null, onSelect: null });
+  const [veresiyeDetailModal, setVeresiyeDetailModal] = useState({ isOpen: false, customerPhone: null, customerName: null });
+  const [tahsilatModal, setTahsilatModal] = useState({ isOpen: false, customerPhone: null, customerName: null, totalDebt: 0 });
+  const [tahsilatAmountInput, setTahsilatAmountInput] = useState('');
+  const [tahsilatPaymentMethod, setTahsilatPaymentMethod] = useState('Nakit');
+
   // Admin Tab & Sub-tab filter states
   const [adminSubTab, setAdminSubTab] = useState('appointments'); // appointments, finance
   const [adminFilter, setAdminFilter] = useState('Beklemede'); // Beklemede, Onaylandı, Tamamlandı, Veresiye, Tamamlanmadı, Tümü
@@ -352,6 +359,29 @@ function App() {
 
   // Update appointment status (Approve, Reject, Complete, Veresiye, Tamamlanmadı)
   const handleUpdateStatus = (id, status) => {
+    if (status === 'Tamamlandı') {
+      setPaymentModal({
+        isOpen: true,
+        appointmentId: id,
+        onSelect: async (method) => {
+          setPaymentModal({ isOpen: false, appointmentId: null, onSelect: null });
+          setLoading(true);
+          try {
+            const result = await Api.updateAppointmentStatus(id, 'Tamamlandı', method);
+            if (result.success) {
+              showAlert('Başarılı', `Ödeme '${method}' olarak tahsil edildi ve randevu tamamlandı.`, 'success');
+              loadAdminDashboardData();
+            }
+          } catch (err) {
+            showAlert('Hata', 'Randevu durumu güncellenirken hata oluştu.', 'danger');
+          } finally {
+            setLoading(false);
+          }
+        }
+      });
+      return;
+    }
+
     let actionText = '';
     let severity = 'warning';
     
@@ -361,9 +391,6 @@ function App() {
     } else if (status === 'İptal Edildi') {
       actionText = 'iptal etmek';
       severity = 'danger';
-    } else if (status === 'Tamamlandı') {
-      actionText = 'tamamlandı (ödendi) olarak işaretlemek';
-      severity = 'success';
     } else if (status === 'Veresiye') {
       actionText = 'veresiye (borçlu alacak) olarak kaydetmek';
       severity = 'warning';
@@ -388,6 +415,58 @@ function App() {
       },
       severity
     );
+  };
+
+  const handleTahsilatSubmit = async (e) => {
+    e.preventDefault();
+    if (!tahsilatAmountInput || parseInt(tahsilatAmountInput) <= 0) {
+      showAlert('Eksik Bilgi', 'Lütfen geçerli bir ödeme tutarı girin.', 'warning');
+      return;
+    }
+    if (parseInt(tahsilatAmountInput) > tahsilatModal.totalDebt) {
+      showAlert('Geçersiz Tutar', 'Ödenen tutar kalan toplam borçtan fazla olamaz.', 'warning');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await Api.payVeresiyeDebt(
+        tahsilatModal.customerPhone,
+        parseInt(tahsilatAmountInput),
+        tahsilatPaymentMethod
+      );
+      if (result.success) {
+        setTahsilatModal({ isOpen: false, customerPhone: null, customerName: null, totalDebt: 0 });
+        setTahsilatAmountInput('');
+        showAlert('Başarılı', 'Tahsilat yapıldı ve girilen tutar veresiye borcundan düşüldü.', 'success');
+        loadAdminDashboardData();
+      }
+    } catch (err) {
+      showAlert('Hata', err.message || 'Tahsilat yapılırken hata oluştu.', 'danger');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getGroupedVeresiyeler = () => {
+    const grouped = {};
+    const veresiyes = userAppointments.filter(app => app.status === 'Veresiye');
+    
+    veresiyes.forEach(app => {
+      const key = app.customerPhone;
+      if (!grouped[key]) {
+        grouped[key] = {
+          customerName: app.customerName,
+          customerPhone: app.customerPhone,
+          totalDebt: 0,
+          appointments: []
+        };
+      }
+      grouped[key].totalDebt += app.totalPrice;
+      grouped[key].appointments.push(app);
+    });
+    
+    return Object.values(grouped);
   };
 
   // Completely delete/cancel appointment
@@ -634,6 +713,145 @@ function App() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ödeme Yöntemi Seçici Modal */}
+      {paymentModal.isOpen && (
+        <div className="modal-overlay" onClick={() => setPaymentModal({ isOpen: false, appointmentId: null, onSelect: null })}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header info" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>
+              <DollarSign size={24} />
+              <h3>Ödeme Yöntemi Seçin</h3>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Lütfen bu işlem için kullanılacak ödeme yöntemini seçin:</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff', fontSize: '1rem', padding: '0.75rem' }}
+                  onClick={() => paymentModal.onSelect('Nakit')}
+                >
+                  💵 Nakit Ödeme
+                </button>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ backgroundColor: '#2563eb', borderColor: '#2563eb', color: '#fff', fontSize: '1rem', padding: '0.75rem' }}
+                  onClick={() => paymentModal.onSelect('Kart')}
+                >
+                  💳 Kredi / Banka Kartı
+                </button>
+                <button 
+                  className="btn btn-primary" 
+                  style={{ backgroundColor: '#8b5cf6', borderColor: '#8b5cf6', color: '#fff', fontSize: '1rem', padding: '0.75rem' }}
+                  onClick={() => paymentModal.onSelect('IBAN')}
+                >
+                  🏦 IBAN / Havale Transferi
+                </button>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setPaymentModal({ isOpen: false, appointmentId: null, onSelect: null })}>
+                Vazgeç
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Veresiye Detay Geçmişi Modalı */}
+      {veresiyeDetailModal.isOpen && (
+        <div className="modal-overlay" onClick={() => setVeresiyeDetailModal({ isOpen: false, customerPhone: null, customerName: null })}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', width: '100%' }}>
+            <div className="modal-header info" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>
+              <Bell size={24} />
+              <h3>{veresiyeDetailModal.customerName} - Veresiye Detayları</h3>
+            </div>
+            <div className="modal-body" style={{ maxHeight: '350px', overflowY: 'auto', padding: '1rem 0' }}>
+              <table className="admin-table" style={{ marginTop: 0 }}>
+                <thead>
+                  <tr>
+                    <th>Tarih & Saat</th>
+                    <th>Hizmetler</th>
+                    <th>Tutar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appointments
+                    .filter(app => app.customerPhone === veresiyeDetailModal.customerPhone && app.status === 'Veresiye')
+                    .map(app => (
+                      <tr key={app.id}>
+                        <td>{app.date} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{app.time}</span></td>
+                        <td style={{ fontSize: '0.85rem' }}>
+                          {app.services.map(s => s.name).join(', ')}
+                        </td>
+                        <td style={{ fontWeight: 'bold' }}>{app.totalPrice} TL</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setVeresiyeDetailModal({ isOpen: false, customerPhone: null, customerName: null })}>
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Veresiye Kısmi Tahsilat Modalı */}
+      {tahsilatModal.isOpen && (
+        <div className="modal-overlay" onClick={() => setTahsilatModal({ isOpen: false, customerPhone: null, customerName: null, totalDebt: 0 })}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header success" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}>
+              <TrendingUp size={24} />
+              <h3>Kısmi Tahsilat Yap</h3>
+            </div>
+            <form onSubmit={handleTahsilatSubmit}>
+              <div className="modal-body" style={{ padding: '1.5rem 0' }}>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.95rem' }}>
+                  Müşteri: <strong>{tahsilatModal.customerName}</strong> <br />
+                  Toplam Kalan Borç: <strong style={{ color: 'var(--gold-primary)' }}>{tahsilatModal.totalDebt} TL</strong>
+                </p>
+                
+                <div className="form-group" style={{ textAlign: 'left' }}>
+                  <label htmlFor="tahsilat-amount">Ödenen Tutar (TL) *</label>
+                  <input 
+                    id="tahsilat-amount"
+                    type="number"
+                    className="form-control"
+                    required
+                    placeholder="Düşülecek borç miktarı"
+                    value={tahsilatAmountInput}
+                    onChange={(e) => setTahsilatAmountInput(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group" style={{ textAlign: 'left', marginTop: '1.25rem' }}>
+                  <label htmlFor="tahsilat-method">Tahsilat Türü *</label>
+                  <select 
+                    id="tahsilat-method"
+                    className="form-control"
+                    value={tahsilatPaymentMethod}
+                    onChange={(e) => setTahsilatPaymentMethod(e.target.value)}
+                  >
+                    <option value="Nakit">💵 Nakit</option>
+                    <option value="Kart">💳 Kredi / Banka Kartı</option>
+                    <option value="IBAN">🏦 IBAN / Havale</option>
+                  </select>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" style={{ width: '50%' }} onClick={() => setTahsilatModal({ isOpen: false, customerPhone: null, customerName: null, totalDebt: 0 })}>
+                  Vazgeç
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ width: '50%', backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}>
+                  Tahsil Et
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1429,153 +1647,218 @@ function App() {
                         </button>
                       </div>
 
-                      {filteredAppointments.length === 0 ? (
-                        <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem' }}>
-                          <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>
-                            Bu kategoride kayıtlı randevu bulunmamaktadır.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="glass-panel" style={{ padding: '2rem' }}>
-                          <div className="admin-table-container">
-                            <table className="admin-table">
-                              <thead>
-                                <tr>
-                                  <th>No</th>
-                                  <th>Müşteri Adı</th>
-                                  <th>Telefon</th>
-                                  <th>Berber</th>
-                                  <th>Hizmetler</th>
-                                  <th>Tarih & Saat</th>
-                                  <th>Tutar</th>
-                                  <th>Durum</th>
-                                  <th>Aksiyonlar</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {filteredAppointments.map((app) => (
-                                  <tr key={app.id}>
-                                    <td style={{ fontWeight: 'bold' }}>#{app.id.slice(-6)}</td>
-                                    <td>{app.customerName}</td>
-                                    <td>{app.customerPhone}</td>
-                                    <td style={{ color: 'var(--gold-primary)' }}>{app.barberName}</td>
-                                    <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                      {app.services.map(s => s.name).join(', ')}
-                                    </td>
-                                    <td>
-                                      <span style={{ fontWeight: '600' }}>{app.date}</span> <br />
-                                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{app.time}</span>
-                                    </td>
-                                    <td style={{ fontWeight: 'bold' }}>{app.totalPrice} TL</td>
-                                    <td>
-                                      <span className={`status-badge ${
-                                        app.status === 'Onaylandı' ? 'confirmed' : 
-                                        app.status === 'Beklemede' ? 'pending' : 
-                                        app.status === 'Tamamlandı' ? 'confirmed' : 
-                                        app.status === 'Veresiye' ? 'veresiye' : 
-                                        app.status === 'Tamamlanmadı' ? 'no-show' : 'cancelled'
-                                      }`} style={app.status === 'Tamamlandı' ? { backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)' } : {}}>
-                                        {app.status === 'Tamamlanmadı' ? 'Gelmedi' : app.status}
-                                      </span>
-                                    </td>
-                                    <td>
-                                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                        {app.status === 'Beklemede' && (
-                                          <>
-                                            <button 
-                                              className="btn btn-primary" 
-                                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
-                                              onClick={() => handleUpdateStatus(app.id, 'Onaylandı')}
-                                            >
-                                              Onayla
-                                            </button>
-                                            <button 
-                                              className="btn btn-secondary" 
-                                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderColor: 'var(--danger)', color: 'var(--danger)' }}
-                                              onClick={() => handleUpdateStatus(app.id, 'İptal Edildi')}
-                                            >
-                                              Reddet
-                                            </button>
-                                          </>
-                                        )}
-                                        {app.status === 'Onaylandı' && (
-                                          <>
-                                            <button 
-                                              className="btn btn-primary" 
-                                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
-                                              onClick={() => handleUpdateStatus(app.id, 'Tamamlandı')}
-                                            >
-                                              Ödendi (Nakit/Kart)
-                                            </button>
-                                            <button 
-                                              className="btn btn-primary" 
-                                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: '#8b5cf6', borderColor: '#8b5cf6', color: '#fff' }}
-                                              onClick={() => handleUpdateStatus(app.id, 'Veresiye')}
-                                            >
-                                              Veresiye Yaz
-                                            </button>
-                                            <button 
-                                              className="btn btn-secondary" 
-                                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderColor: 'var(--danger)', color: 'var(--danger)' }}
-                                              onClick={() => handleUpdateStatus(app.id, 'Tamamlanmadı')}
-                                            >
-                                              Gelmedi
-                                            </button>
-                                          </>
-                                        )}
-                                        {app.status === 'Veresiye' && (
-                                          <>
-                                            <button 
-                                              className="btn btn-primary" 
-                                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
-                                              onClick={() => handleUpdateStatus(app.id, 'Tamamlandı')}
-                                            >
-                                              Ödemeyi Kapat (Tahsil Et)
-                                            </button>
-                                            <button 
-                                              className="btn btn-secondary btn-icon" 
-                                              title="Sil"
-                                              onClick={() => handleCancelAppointment(app.id)}
-                                            >
-                                              <Trash2 size={16} />
-                                            </button>
-                                          </>
-                                        )}
-                                        {app.status === 'Tamamlanmadı' && (
-                                          <>
-                                            <button 
-                                              className="btn btn-primary" 
-                                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                                              onClick={() => handleUpdateStatus(app.id, 'Onaylandı')}
-                                            >
-                                              Tekrar Onayla
-                                            </button>
-                                            <button 
-                                              className="btn btn-secondary btn-icon" 
-                                              title="Sil"
-                                              onClick={() => handleCancelAppointment(app.id)}
-                                            >
-                                              <Trash2 size={16} />
-                                            </button>
-                                          </>
-                                        )}
-                                        {(app.status === 'İptal Edildi' || app.status === 'Tamamlandı') && (
-                                          <button 
-                                            className="btn btn-secondary btn-icon" 
-                                            title="Sistemden Sil"
-                                            onClick={() => handleCancelAppointment(app.id)}
-                                          >
-                                            <Trash2 size={16} />
-                                          </button>
-                                        )}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                      {adminFilter === 'Veresiye' ? (
+                        /* Grouped Veresiye Cari Listesi */
+                        getGroupedVeresiyeler().length === 0 ? (
+                          <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem' }}>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>
+                              Aktif veresiye borcu bulunan müşteri bulunmamaktadır.
+                            </p>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="glass-panel" style={{ padding: '2rem' }}>
+                            <div className="admin-table-container">
+                              <table className="admin-table">
+                                <thead>
+                                  <tr>
+                                    <th>Müşteri Adı</th>
+                                    <th>Telefon Numarası</th>
+                                    <th>Toplam Borç</th>
+                                    <th>Aksiyonlar</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {getGroupedVeresiyeler().map((debtor) => (
+                                    <tr key={debtor.customerPhone}>
+                                      <td style={{ fontWeight: '600' }}>{debtor.customerName}</td>
+                                      <td>{debtor.customerPhone}</td>
+                                      <td style={{ fontWeight: 'bold', color: 'var(--danger)', fontSize: '1.1rem' }}>
+                                        {debtor.totalDebt} TL
+                                      </td>
+                                      <td>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                          <button 
+                                            className="btn btn-secondary" 
+                                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                                            onClick={() => setVeresiyeDetailModal({ isOpen: true, customerPhone: debtor.customerPhone, customerName: debtor.customerName })}
+                                          >
+                                            👁️ Detay Gör
+                                          </button>
+                                          <button 
+                                            className="btn btn-primary" 
+                                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
+                                            onClick={() => {
+                                              setTahsilatModal({
+                                                isOpen: true,
+                                                customerPhone: debtor.customerPhone,
+                                                customerName: debtor.customerName,
+                                                totalDebt: debtor.totalDebt
+                                              });
+                                              setTahsilatAmountInput(debtor.totalDebt.toString());
+                                            }}
+                                          >
+                                            💰 Borç Düş (Tahsilat)
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        /* Standard Appointments View */
+                        filteredAppointments.length === 0 ? (
+                          <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem' }}>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>
+                              Bu kategoride kayıtlı randevu bulunmamaktadır.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="glass-panel" style={{ padding: '2rem' }}>
+                            <div className="admin-table-container">
+                              <table className="admin-table">
+                                <thead>
+                                  <tr>
+                                    <th>No</th>
+                                    <th>Müşteri Adı</th>
+                                    <th>Telefon</th>
+                                    <th>Berber</th>
+                                    <th>Hizmetler</th>
+                                    <th>Tarih & Saat</th>
+                                    <th>Tutar</th>
+                                    <th>Durum</th>
+                                    <th>Aksiyonlar</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {filteredAppointments.map((app) => (
+                                    <tr key={app.id}>
+                                      <td style={{ fontWeight: 'bold' }}>#{app.id.slice(-6)}</td>
+                                      <td>{app.customerName}</td>
+                                      <td>{app.customerPhone}</td>
+                                      <td style={{ color: 'var(--gold-primary)' }}>{app.barberName}</td>
+                                      <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                        {app.services.map(s => s.name).join(', ')}
+                                      </td>
+                                      <td>
+                                        <span style={{ fontWeight: '600' }}>{app.date}</span> <br />
+                                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{app.time}</span>
+                                      </td>
+                                      <td style={{ fontWeight: 'bold' }}>{app.totalPrice} TL</td>
+                                      <td>
+                                        <span className={`status-badge ${
+                                          app.status === 'Onaylandı' ? 'confirmed' : 
+                                          app.status === 'Beklemede' ? 'pending' : 
+                                          app.status === 'Tamamlandı' ? 'confirmed' : 
+                                          app.status === 'Veresiye' ? 'veresiye' : 
+                                          app.status === 'Tamamlanmadı' ? 'no-show' : 'cancelled'
+                                        }`} style={app.status === 'Tamamlandı' ? { backgroundColor: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)' } : {}}>
+                                          {app.status === 'Tamamlanmadı' ? 'Gelmedi' : app.status}
+                                          {app.status === 'Tamamlandı' && app.paymentMethod && ` (${app.paymentMethod})`}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                          {app.status === 'Beklemede' && (
+                                            <>
+                                              <button 
+                                                className="btn btn-primary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
+                                                onClick={() => handleUpdateStatus(app.id, 'Onaylandı')}
+                                              >
+                                                Onayla
+                                              </button>
+                                              <button 
+                                                className="btn btn-secondary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderColor: 'var(--danger)', color: 'var(--danger)' }}
+                                                onClick={() => handleUpdateStatus(app.id, 'İptal Edildi')}
+                                              >
+                                                Reddet
+                                              </button>
+                                            </>
+                                          )}
+                                          {app.status === 'Onaylandı' && (
+                                            <>
+                                              <button 
+                                                className="btn btn-primary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
+                                                onClick={() => handleUpdateStatus(app.id, 'Tamamlandı')}
+                                              >
+                                                Ödendi (Nakit/Kart)
+                                              </button>
+                                              <button 
+                                                className="btn btn-primary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: '#8b5cf6', borderColor: '#8b5cf6', color: '#fff' }}
+                                                onClick={() => handleUpdateStatus(app.id, 'Veresiye')}
+                                              >
+                                                Veresiye Yaz
+                                              </button>
+                                              <button 
+                                                className="btn btn-secondary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderColor: 'var(--danger)', color: 'var(--danger)' }}
+                                                onClick={() => handleUpdateStatus(app.id, 'Tamamlanmadı')}
+                                              >
+                                                Gelmedi
+                                              </button>
+                                            </>
+                                          )}
+                                          {app.status === 'Veresiye' && (
+                                            <>
+                                              <button 
+                                                className="btn btn-primary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', backgroundColor: 'var(--success)', borderColor: 'var(--success)', color: '#fff' }}
+                                                onClick={() => handleUpdateStatus(app.id, 'Tamamlandı')}
+                                              >
+                                                Ödemeyi Kapat (Tahsil Et)
+                                              </button>
+                                              <button 
+                                                className="btn btn-secondary btn-icon" 
+                                                title="Sil"
+                                                onClick={() => handleCancelAppointment(app.id)}
+                                              >
+                                                <Trash2 size={16} />
+                                              </button>
+                                            </>
+                                          )}
+                                          {app.status === 'Tamamlanmadı' && (
+                                            <>
+                                              <button 
+                                                className="btn btn-primary" 
+                                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                                                onClick={() => handleUpdateStatus(app.id, 'Onaylandı')}
+                                              >
+                                                Tekrar Onayla
+                                              </button>
+                                              <button 
+                                                className="btn btn-secondary btn-icon" 
+                                                title="Sil"
+                                                onClick={() => handleCancelAppointment(app.id)}
+                                              >
+                                                <Trash2 size={16} />
+                                              </button>
+                                            </>
+                                          )}
+                                          {(app.status === 'İptal Edildi' || app.status === 'Tamamlandı') && (
+                                            <button 
+                                              className="btn btn-secondary btn-icon" 
+                                              title="Sistemden Sil"
+                                              onClick={() => handleCancelAppointment(app.id)}
+                                            >
+                                              <Trash2 size={16} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )
                       )}
                     </div>
                   )}

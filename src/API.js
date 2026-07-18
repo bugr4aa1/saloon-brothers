@@ -45,13 +45,26 @@ export async function deleteAppointment(id) {
   return response.json();
 }
 
-export async function updateAppointmentStatus(id, status) {
+export async function updateAppointmentStatus(id, status, paymentMethod) {
   const response = await fetch(`${API_BASE_URL}/appointments/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, paymentMethod }),
   });
   if (!response.ok) throw new Error('Randevu durumu güncellenemedi.');
+  return response.json();
+}
+
+export async function payVeresiyeDebt(customerPhone, amount, paymentMethod) {
+  const response = await fetch(`${API_BASE_URL}/appointments/pay-debt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ customerPhone, amount, paymentMethod }),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Tahsilat gerçekleştirilemedi.');
+  }
   return response.json();
 }
 
