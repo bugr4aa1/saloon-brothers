@@ -612,9 +612,8 @@ function App() {
       {/* Header */}
       <header className="app-header">
         <div className="container header-container">
-          <a href="#" className="logo" onClick={(e) => { e.preventDefault(); resetBooking(); }}>
-            <Scissors size={24} />
-            <span>Saloon Brothers</span>
+          <a href="#" className="logo" onClick={(e) => { e.preventDefault(); resetBooking(); }} style={{ display: 'flex', alignItems: 'center', padding: '2px 0' }}>
+            <img src="/logo.jpg" alt="Saloon Brothers" style={{ height: '48px', width: 'auto', objectFit: 'contain' }} />
           </a>
           <nav style={{ width: 'auto' }}>
             <ul className="nav-links">
