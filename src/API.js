@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://saloon-brothers-backend.onrender.com/api';
+export const API_BASE_URL = 'https://saloon-brothers-backend.onrender.com/api';
 
 export async function fetchBarbers() {
   const response = await fetch(`${API_BASE_URL}/barbers`);

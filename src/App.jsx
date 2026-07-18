@@ -35,9 +35,9 @@ function playNotificationSound() {
     const ctx = new AudioContext();
     const now = ctx.currentTime;
     
-    // Play a repeating double-beep sequence every second for 15 seconds
-    const totalBeeps = 15;
-    const beepDuration = 0.25; 
+    // Play a repeating loud double-beep sawtooth sequence every second for 10 seconds
+    const totalBeeps = 10;
+    const beepDuration = 0.35; 
     
     for (let i = 0; i < totalBeeps; i++) {
       const secondStart = now + i;
@@ -47,22 +47,22 @@ function playNotificationSound() {
       const gain1 = ctx.createGain();
       osc1.connect(gain1);
       gain1.connect(ctx.destination);
-      osc1.type = 'triangle'; // triangle wave is louder and cleaner
-      osc1.frequency.setValueAtTime(880, secondStart); // A5 note
-      gain1.gain.setValueAtTime(0.25, secondStart); // Louder volume (0.25)
+      osc1.type = 'sawtooth'; // sawtooth waveform is much louder and buzzy like a real alarm
+      osc1.frequency.setValueAtTime(988, secondStart); // high piercing B5 pitch
+      gain1.gain.setValueAtTime(0.35, secondStart); // high volume
       gain1.gain.exponentialRampToValueAtTime(0.001, secondStart + beepDuration);
       osc1.start(secondStart);
       osc1.stop(secondStart + beepDuration);
 
-      // Beep 2 (quick succession for alarm effect)
-      const beep2Start = secondStart + 0.3;
+      // Beep 2 (quick succession for alarm warning)
+      const beep2Start = secondStart + 0.4;
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
       osc2.connect(gain2);
       gain2.connect(ctx.destination);
-      osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(880, beep2Start);
-      gain2.gain.setValueAtTime(0.25, beep2Start);
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(988, beep2Start);
+      gain2.gain.setValueAtTime(0.35, beep2Start);
       gain2.gain.exponentialRampToValueAtTime(0.001, beep2Start + beepDuration);
       osc2.start(beep2Start);
       osc2.stop(beep2Start + beepDuration);
@@ -71,6 +71,7 @@ function playNotificationSound() {
     console.log('Audio Context interaction block or error:', err);
   }
 }
+
 
 function App() {
   const [activeTab, setActiveTab] = useState('home'); // home, book, admin
@@ -158,52 +159,74 @@ function App() {
     });
   };
 
-  // WebSocket Connection for Real-time Notifications
+  // WebSocket Connection with Auto-reconnect for Real-time Notifications
   useEffect(() => {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(`${wsProtocol}//localhost:5001`);
+    const wsBase = Api.API_BASE_URL.replace('/api', '');
+    const wsProtocol = wsBase.startsWith('https') ? 'wss:' : 'ws:';
+    const wsHost = wsBase.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProtocol}//${wsHost}`;
 
-    socket.onopen = () => {
-      console.log('WebSocket Connected to backend');
-    };
+    let socket = null;
+    let reconnectTimeout = null;
+    let isMounted = true;
 
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'NEW_APPOINTMENT') {
-          const app = data.appointment;
-          
-          // Play alert sound
-          playNotificationSound();
+    function connect() {
+      if (!isMounted) return;
+      console.log('Connecting WebSocket to:', wsUrl);
+      socket = new WebSocket(wsUrl);
 
-          // Push toast notification
-          const newToast = {
-            id: Date.now().toString(),
-            title: 'Yeni Randevu Talebi!',
-            body: `${app.customerName}, ${app.date} günü saat ${app.time} için randevu talep etti.`,
-            meta: `Tutar: ${app.totalPrice} TL | Berber: ${app.barberName}`
-          };
+      socket.onopen = () => {
+        console.log('WebSocket Connected to backend successfully');
+      };
 
-          setToasts(prevToasts => [newToast, ...prevToasts]);
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'NEW_APPOINTMENT') {
+            const app = data.appointment;
+            
+            // Play alert sound
+            playNotificationSound();
 
-          // Automatically reload data if admin panel is open
-          if (activeTab === 'admin' && isAdminAuthenticated) {
-            loadAppointments();
+            // Push toast notification
+            const newToast = {
+              id: Date.now().toString(),
+              title: 'Yeni Randevu Talebi!',
+              body: `${app.customerName}, ${app.date} günü saat ${app.time} için randevu talep etti.`,
+              meta: `Tutar: ${app.totalPrice} TL | Berber: ${app.barberName}`
+            };
+
+            setToasts(prevToasts => [newToast, ...prevToasts]);
+
+            // Automatically reload dashboard data
+            loadAdminDashboardData();
           }
+        } catch (err) {
+          console.error('Error handling WS message:', err);
         }
-      } catch (err) {
-        console.error('Error handling WS message:', err);
-      }
-    };
+      };
 
-    socket.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
+      socket.onclose = (e) => {
+        console.log('WebSocket connection closed. Reconnecting in 3 seconds...', e);
+        if (isMounted) {
+          reconnectTimeout = setTimeout(connect, 3000);
+        }
+      };
+
+      socket.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        socket.close();
+      };
+    }
+
+    connect();
 
     return () => {
-      socket.close();
+      isMounted = false;
+      if (socket) socket.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
-  }, [activeTab, isAdminAuthenticated]);
+  }, [activeTab]);
 
   // Handle toast removal after delay
   const removeToast = (id) => {
@@ -283,6 +306,19 @@ function App() {
       setLoginError('');
       setPasswordInput('');
       showAlert('Giriş Başarılı', 'Yönetim paneline başarıyla giriş yaptınız.', 'success');
+      
+      // Force unlock browser Audio Context to allow loud alarms
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const tempCtx = new AudioContext();
+          if (tempCtx.state === 'suspended') {
+            tempCtx.resume();
+          }
+        }
+      } catch (err) {
+        console.log('Audio unlock failed:', err);
+      }
     } else {
       setLoginError('Hatalı şifre girdiniz. Tekrar deneyin.');
     }
@@ -429,28 +465,37 @@ function App() {
   const totalExpense = expenses.reduce((sum, exp) => sum + exp.amount, 0);
   const netProfit = totalRevenue - totalExpense; // Cash on hand profit (Revenue - Expenses)
 
-  // Get next 7 days for booking
+  // Get next 7 working days (excluding Sundays) for booking
   const getNextSevenDays = () => {
     const days = [];
     const today = new Date();
-    for (let i = 0; i < 7; i++) {
+    let added = 0;
+    let offset = 0;
+    while (added < 7) {
       const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const dd = String(date.getDate()).padStart(2, '0');
+      date.setDate(today.getDate() + offset);
       
-      const dayName = date.toLocaleDateString('tr-TR', { weekday: 'short' });
-      const dayNum = date.getDate();
-      
-      days.push({
-        formatted: `${yyyy}-${mm}-${dd}`,
-        dayName,
-        dayNum
-      });
+      // 0 is Sunday
+      if (date.getDay() !== 0) {
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        
+        const dayName = date.toLocaleDateString('tr-TR', { weekday: 'short' });
+        const dayNum = date.getDate();
+        
+        days.push({
+          formatted: `${yyyy}-${mm}-${dd}`,
+          dayName,
+          dayNum
+        });
+        added++;
+      }
+      offset++;
     }
     return days;
   };
+
 
   const handleBookingSubmit = async (e) => {
     e.preventDefault();
@@ -694,16 +739,20 @@ function App() {
                   {barbers.map(barber => (
                     <div key={barber.id} className="card" onClick={() => { setSelectedBarber(barber); setActiveTab('book'); setBookingStep(2); }}>
                       <div className="card-body" style={{ padding: '2rem' }}>
-                        <span className="status-badge" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', display: 'inline-block', marginBottom: '0.75rem', fontSize: '0.75rem' }}>
-                          {barber.experience}
-                        </span>
+                        {barber.experience && (
+                          <span className="status-badge" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', display: 'inline-block', marginBottom: '0.75rem', fontSize: '0.75rem' }}>
+                            {barber.experience}
+                          </span>
+                        )}
                         <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{barber.name}</h3>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>{barber.specialty}</p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>
-                          <Star size={16} fill="var(--gold-primary)" />
-                          <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{barber.rating}</span>
-                          <span style={{ color: 'var(--text-muted)' }}>({barber.reviewCount} Değerlendirme)</span>
-                        </div>
+                        {barber.rating > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>
+                            <Star size={16} fill="var(--gold-primary)" />
+                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{barber.rating}</span>
+                            <span style={{ color: 'var(--text-muted)' }}>({barber.reviewCount} Yorum)</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -787,15 +836,19 @@ function App() {
                         onClick={() => setSelectedBarber(barber)}
                       >
                         <div className="card-body" style={{ padding: '2rem' }}>
-                          <span className="status-badge" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', display: 'inline-block', marginBottom: '0.75rem', fontSize: '0.75rem' }}>
-                            {barber.experience}
-                          </span>
+                          {barber.experience && (
+                            <span className="status-badge" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', display: 'inline-block', marginBottom: '0.75rem', fontSize: '0.75rem' }}>
+                              {barber.experience}
+                            </span>
+                          )}
                           <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>{barber.name}</h3>
                           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>{barber.specialty}</p>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>
-                            <Star size={14} fill="var(--gold-primary)" />
-                            <span>{barber.rating} ({barber.reviewCount} Yorum)</span>
-                          </div>
+                          {barber.rating > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--gold-primary)', fontSize: '0.9rem' }}>
+                              <Star size={14} fill="var(--gold-primary)" />
+                              <span>{barber.rating} ({barber.reviewCount} Yorum)</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1145,6 +1198,9 @@ function App() {
                       <p style={{ color: 'var(--text-secondary)' }}>Saloon Brothers dükkan yönetimi, mali göstergeler ve randevular.</p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <button className="btn btn-secondary" onClick={playNotificationSound}>
+                        Sesi Test Et
+                      </button>
                       <button className="btn btn-secondary" onClick={loadAdminDashboardData} disabled={loading}>
                         Yenile
                       </button>
