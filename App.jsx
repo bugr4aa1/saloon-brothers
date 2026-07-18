@@ -159,57 +159,74 @@ function App() {
     });
   };
 
-  // WebSocket Connection for Real-time Notifications
+  // WebSocket Connection with Auto-reconnect for Real-time Notifications
   useEffect(() => {
     const wsBase = Api.API_BASE_URL.replace('/api', '');
     const wsProtocol = wsBase.startsWith('https') ? 'wss:' : 'ws:';
     const wsHost = wsBase.replace(/^https?:\/\//, '');
     const wsUrl = `${wsProtocol}//${wsHost}`;
 
-    console.log('Connecting WebSocket to:', wsUrl);
-    const socket = new WebSocket(wsUrl);
+    let socket = null;
+    let reconnectTimeout = null;
+    let isMounted = true;
 
-    socket.onopen = () => {
-      console.log('WebSocket Connected to backend');
-    };
+    function connect() {
+      if (!isMounted) return;
+      console.log('Connecting WebSocket to:', wsUrl);
+      socket = new WebSocket(wsUrl);
 
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'NEW_APPOINTMENT') {
-          const app = data.appointment;
-          
-          // Play alert sound
-          playNotificationSound();
+      socket.onopen = () => {
+        console.log('WebSocket Connected to backend successfully');
+      };
 
-          // Push toast notification
-          const newToast = {
-            id: Date.now().toString(),
-            title: 'Yeni Randevu Talebi!',
-            body: `${app.customerName}, ${app.date} günü saat ${app.time} için randevu talep etti.`,
-            meta: `Tutar: ${app.totalPrice} TL | Berber: ${app.barberName}`
-          };
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'NEW_APPOINTMENT') {
+            const app = data.appointment;
+            
+            // Play alert sound
+            playNotificationSound();
 
-          setToasts(prevToasts => [newToast, ...prevToasts]);
+            // Push toast notification
+            const newToast = {
+              id: Date.now().toString(),
+              title: 'Yeni Randevu Talebi!',
+              body: `${app.customerName}, ${app.date} günü saat ${app.time} için randevu talep etti.`,
+              meta: `Tutar: ${app.totalPrice} TL | Berber: ${app.barberName}`
+            };
 
-          // Automatically reload data if admin panel is open
-          if (activeTab === 'admin' && isAdminAuthenticated) {
-            loadAppointments();
+            setToasts(prevToasts => [newToast, ...prevToasts]);
+
+            // Automatically reload dashboard data
+            loadAdminDashboardData();
           }
+        } catch (err) {
+          console.error('Error handling WS message:', err);
         }
-      } catch (err) {
-        console.error('Error handling WS message:', err);
-      }
-    };
+      };
 
-    socket.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
+      socket.onclose = (e) => {
+        console.log('WebSocket connection closed. Reconnecting in 3 seconds...', e);
+        if (isMounted) {
+          reconnectTimeout = setTimeout(connect, 3000);
+        }
+      };
+
+      socket.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        socket.close();
+      };
+    }
+
+    connect();
 
     return () => {
-      socket.close();
+      isMounted = false;
+      if (socket) socket.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
-  }, [activeTab, isAdminAuthenticated]);
+  }, [activeTab]);
 
   // Handle toast removal after delay
   const removeToast = (id) => {
@@ -1181,6 +1198,9 @@ function App() {
                       <p style={{ color: 'var(--text-secondary)' }}>Saloon Brothers dükkan yönetimi, mali göstergeler ve randevular.</p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      <button className="btn btn-secondary" onClick={playNotificationSound}>
+                        Sesi Test Et
+                      </button>
                       <button className="btn btn-secondary" onClick={loadAdminDashboardData} disabled={loading}>
                         Yenile
                       </button>
